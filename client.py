@@ -6,12 +6,20 @@ Run with: streamlit run vy_client_register.py
 import streamlit as st
 import json
 import os
+import time
+import requests
 from datetime import datetime
 
+# --- CONFIGURATION & CONSTANTS ---
 CLIENTS_FILE = "vy_clients.json"
 IB_VANTAGE_LINK = "https://www.vantagemarkets.com/open-live-account/?affid=MjMxNDgzOTU=&invitecode=u0vkGliE"
 IB_DISCOUNT_PERCENT = 15
+
+# YAHAN APNI HELIUS API KEY DAALEIN 👇
+HELIUS_API_KEY = "be1c7613-5cb4-492a-afc3-c07c3443b923" 
+
 WALLET_ADDRESS = "2tVBtgRjSeWePCniFXnjoKbdzvnmKKBiqciXUTGnTT2r"
+USDT_MINT_ADDRESS = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB" # Official Solana USDT Address
 
 PLANS = {
     "Trial":     {"price": 0,   "days": 7,   "label": "7-day Free Trial — FREE"},
@@ -21,6 +29,15 @@ PLANS = {
     "Lifetime":  {"price": 999, "days": 36500, "label": "Lifetime — $999 one-time"},
 }
 
+# --- SESSION STATE ---
+if 'step' not in st.session_state:
+    st.session_state.step = 'registration'
+if 'current_client_email' not in st.session_state:
+    st.session_state.current_client_email = ''
+if 'amount_due' not in st.session_state:
+    st.session_state.amount_due = 0
+
+# --- DATABASE FUNCTIONS (JSON) ---
 def load_clients():
     if not os.path.exists(CLIENTS_FILE):
         return []
@@ -35,6 +52,62 @@ def already_registered(email):
     clients = load_clients()
     return any(c.get("email", "").lower() == email.lower() for c in clients)
 
+def update_client_status(email, tx_id, status="paid"):
+    clients = load_clients()
+    for c in clients:
+        if c.get("email") == email:
+            c["status"] = status
+            c["tx_id"] = tx_id
+            c["payment_verified_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            break
+    save_clients(clients)
+
+# --- CRYPTO VERIFICATION FUNCTION ---
+def verify_solana_transaction(tx_id, expected_amount):
+    tx_id = tx_id.strip()
+    
+    # Agar API key set nahi ki hai, toh error na aaye isliye dummy verify karega
+    if HELIUS_API_KEY == "YAHAN_APNI_HELIUS_API_KEY_DAALEIN":
+        time.sleep(2)
+        return True, "Mock Verified (Warning: API Key set nahi hai, yeh real verification nahi hai)"
+
+    url = f"https://api.helius.xyz/v0/transactions/?api-key={HELIUS_API_KEY}"
+    payload = {"transactions": [tx_id]}
+    
+    try:
+        response = requests.post(url, json=payload)
+        
+        if response.status_code != 200:
+            return False, f"API Error ({response.status_code}). Please check your Helius API Key."
+            
+        data = response.json()
+        if not data:
+            return False, "Transaction ID not found. Agar abhi payment ki hai, toh 30 seconds wait karke dobara try karein."
+            
+        tx_data = data[0]
+        
+        # Check 1: Did the transaction fail on the blockchain?
+        if tx_data.get("transactionError"):
+            return False, "Yeh transaction blockchain par fail ho chuki hai."
+            
+        # Check 2: Find USDT transfer to our wallet
+        token_transfers = tx_data.get("tokenTransfers", [])
+        for transfer in token_transfers:
+            # Match Mint (USDT) and Receiver (Your Wallet)
+            if transfer.get("mint") == USDT_MINT_ADDRESS and transfer.get("toUserAccount") == WALLET_ADDRESS:
+                amount_received = transfer.get("tokenAmount", 0)
+                
+                # Check 3: Is the amount correct?
+                if float(amount_received) >= float(expected_amount):
+                    return True, f"Payment Verified! {amount_received} USDT Received."
+                else:
+                    return False, f"Amount Mismatch! Expected ${expected_amount} but received ${amount_received}."
+                    
+        return False, "Transaction valid hai, par isme aapke wallet mein USDT receive nahi hua."
+        
+    except Exception as e:
+        return False, f"System Error: {str(e)}"
+
 # ─────────────────────────────────────────────────────────────
 # CSS (Pure White Theme)
 # ─────────────────────────────────────────────────────────────
@@ -46,239 +119,167 @@ def inject_css():
     html, body, .stApp, .main    { background-color: #ffffff !important; color: #111827 !important; }
     .block-container              { padding-top: 0 !important; max-width: 680px !important; margin: 0 auto !important; }
     
-    /* Button Styling */
     .stButton > button            { background: linear-gradient(135deg, #0050bb 0%, #6018cc 100%) !important; 
                                     color: #fff !important; border: none !important; border-radius: 8px !important; 
                                     font-weight: 600 !important; transition: all .2s !important; font-size: 14px !important; }
     .stButton > button:hover      { filter: brightness(1.15) !important; transform: translateY(-1px) !important; box-shadow: 0 4px 12px rgba(0,80,187,0.2) !important; }
     
-    /* Input Fields Styling */
     .stTextInput input, .stNumberInput input, .stTextArea textarea { 
         background: #f9fafb !important; border: 1px solid #d1d5db !important; 
         color: #111827 !important; border-radius: 8px !important; font-size: 14px !important; }
-    .stSelectbox [data-baseweb="select"] > div { 
-        background: #f9fafb !important; border-color: #d1d5db !important; color: #111827 !important; }
-    
-    /* Text Colors */
+    .stSelectbox [data-baseweb="select"] > div { background: #f9fafb !important; border-color: #d1d5db !important; color: #111827 !important; }
     .stRadio > div > label        { color: #374151 !important; }
     .stCheckbox > label           { color: #374151 !important; font-size: 14px !important; }
     p, div, span, label           { color: #111827; }
     </style>
     """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────
-# PAGE
-# ─────────────────────────────────────────────────────────────
 st.set_page_config(page_title="V.Y. Tech — Join Platform", page_icon="📈", layout="centered")
 inject_css()
 
-# HERO
+# HERO SECTION
 st.markdown("""
 <div style="text-align:center;padding:48px 20px 24px;">
-    <div style="font-size:38px;font-weight:900;letter-spacing:7px;
-                background:linear-gradient(135deg,#0050bb 0%,#7b2ff7 100%);
-                -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+    <div style="font-size:38px;font-weight:900;letter-spacing:7px; background:linear-gradient(135deg,#0050bb 0%,#7b2ff7 100%); -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
         V.Y. TECH
     </div>
-    <div style="color:#6b7280;font-size:10px;letter-spacing:4px;text-transform:uppercase;margin-top:4px;">
-        Institutional AI Trading Platform
-    </div>
-    <div style="color:#4b5563;font-size:14px;margin-top:12px;line-height:1.6;">
-        Subscribe to access the <b style="color:#0050bb;">Omega AI Platform</b> — RF + LSTM ensemble<br>
-        signals for Gold, Forex & more, directly in MetaTrader 5.
-    </div>
+    <div style="color:#6b7280;font-size:10px;letter-spacing:4px;text-transform:uppercase;margin-top:4px;">Institutional AI Trading Platform</div>
 </div>
 """, unsafe_allow_html=True)
 
-# PRICING CARDS
-st.markdown("""
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px;">
-    <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;text-align:center;box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-        <div style="color:#6b7280;font-size:10px;letter-spacing:2px;text-transform:uppercase;">Monthly</div>
-        <div style="font-size:26px;font-weight:900;color:#111827;margin:6px 0;">$49</div>
-        <div style="color:#6b7280;font-size:11px;">30 days access</div>
-    </div>
-    <div style="background:#f0f9ff;border:2px solid #0050bb;
-                border-radius:12px;padding:16px;text-align:center;position:relative;box-shadow: 0 4px 6px rgba(0,80,187,0.1);">
-        <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);
-                    background:linear-gradient(135deg,#0050bb,#6018cc);
-                    color:#fff;font-size:9px;font-weight:700;padding:3px 10px;border-radius:20px;
-                    letter-spacing:1px;white-space:nowrap;">MOST POPULAR</div>
-        <div style="color:#0369a1;font-size:10px;letter-spacing:2px;text-transform:uppercase;">Quarterly</div>
-        <div style="font-size:26px;font-weight:900;color:#0f172a;margin:6px 0;">$129</div>
-        <div style="color:#0284c7;font-size:11px;">90 days · save 12%</div>
-    </div>
-    <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;text-align:center;box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-        <div style="color:#6b7280;font-size:10px;letter-spacing:2px;text-transform:uppercase;">Annual</div>
-        <div style="font-size:26px;font-weight:900;color:#111827;margin:6px 0;">$399</div>
-        <div style="color:#6b7280;font-size:11px;">365 days · save 32%</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# IB Banner
-st.markdown(f"""
-<div style="background:#fdf4ff;border:1px solid #f5d0fe;
-            border-radius:12px;padding:14px 18px;margin-bottom:20px;
-            display:flex;align-items:center;justify-content:space-between;">
-    <div>
-        <div style="color:#86198f;font-size:13px;font-weight:600;margin-bottom:3px;">
-            🤝 Vantage IB Partner Discount
-        </div>
-        <div style="color:#a21caf;font-size:12px;">
-            Open a Vantage account via our partner link and get
-            <b style="color:#701a75;">{IB_DISCOUNT_PERCENT}% off</b> any subscription plan.
-        </div>
-    </div>
-    <a href="{IB_VANTAGE_LINK}" target="_blank"
-       style="background:linear-gradient(135deg,#e8430a,#f07020);color:#fff;padding:8px 16px;
-              border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;
-              white-space:nowrap;margin-left:16px;box-shadow: 0 2px 4px rgba(232,67,10,0.2);">
-        Open Vantage →
-    </a>
-</div>
-""", unsafe_allow_html=True)
-
-# ─── REGISTRATION FORM ────────────────────────────────────────
-
-st.markdown("""
-<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;padding:28px;margin-bottom:20px;box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
-    <div style="color:#111827;font-size:16px;font-weight:700;margin-bottom:4px;">📋 Registration & Payment Form</div>
-    <div style="color:#4b5563;font-size:12px;">Fill in your details. After submitting, complete your USDT payment to get your license key.</div>
-</div>
-""", unsafe_allow_html=True)
-
-with st.form("registration_form", clear_on_submit=False):
-    st.markdown("##### 👤 Personal Details")
-    f_col1, f_col2 = st.columns(2)
-    with f_col1:
-        f_name  = st.text_input("Full Name *", placeholder="Ahmed Khan")
-        f_email = st.text_input("Email Address *", placeholder="ahmed@email.com")
-    with f_col2:
-        f_phone   = st.text_input("WhatsApp Number *", placeholder="+92-300-0000000")
-        f_country = st.text_input("Country", placeholder="Pakistan")
-
-    st.markdown("---")
-    st.markdown("##### 📊 Trading Details")
-    b_col1, b_col2 = st.columns(2)
-    with b_col1:
-        f_broker = st.text_input("Broker Name *", placeholder="e.g. Vantage, XM, ICMarkets")
-        f_acc_id = st.text_input("MT5 Account Number", placeholder="Your broker account number")
-    with b_col2:
-        f_plan  = st.selectbox("Subscription Plan *", list(PLANS.keys()), 
-                               format_func=lambda x: PLANS[x]["label"], index=1)
-        f_exp   = st.selectbox("Trading Experience", ["Beginner (<1 year)", "Intermediate (1-3 years)", "Advanced (3+ years)", "Professional"])
-
-    st.markdown("---")
-    st.markdown("##### 🤝 IB Partner Discount")
-    f_ib = st.checkbox(
-        f"I opened my trading account via the V.Y. Tech / Vantage IB link — apply {IB_DISCOUNT_PERCENT}% discount",
-        value=False
-    )
+# =====================================================================
+# STEP 1: REGISTRATION FORM
+# =====================================================================
+if st.session_state.step == 'registration':
     
-    st.markdown("##### 💳 Payment Method")
-    st.info("Payment is accepted via **USDT (Solana Network)**. Address will be provided upon submission.")
+    st.markdown("""
+    <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;padding:28px;margin-bottom:20px;box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
+        <div style="color:#111827;font-size:16px;font-weight:700;margin-bottom:4px;">📋 Step 1: Registration Details</div>
+        <div style="color:#4b5563;font-size:12px;">Fill in your details. After submitting, you will be redirected to the secure payment portal.</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    f_notes = st.text_area("Anything else? (optional)", placeholder="Questions, special requests, referral name...")
+    with st.form("registration_form"):
+        f_col1, f_col2 = st.columns(2)
+        with f_col1:
+            f_name  = st.text_input("Full Name *", placeholder="Ahmed Khan")
+            f_email = st.text_input("Email Address *", placeholder="ahmed@email.com")
+        with f_col2:
+            f_phone   = st.text_input("WhatsApp Number *", placeholder="+92-300-0000000")
+            f_country = st.text_input("Country", placeholder="Pakistan")
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    submitted = st.form_submit_button("🚀 Submit & Proceed to Payment", use_container_width=True, type="primary")
+        b_col1, b_col2 = st.columns(2)
+        with b_col1:
+            f_broker = st.text_input("Broker Name *", placeholder="e.g. Vantage, XM")
+            f_acc_id = st.text_input("MT5 Account Number", placeholder="Your broker account number")
+        with b_col2:
+            f_plan  = st.selectbox("Subscription Plan *", list(PLANS.keys()), format_func=lambda x: PLANS[x]["label"], index=1)
+            f_exp   = st.selectbox("Trading Experience", ["Beginner", "Intermediate", "Advanced", "Professional"])
 
-if submitted:
-    # Validation
-    errors = []
-    if not f_name.strip():   errors.append("Full name is required.")
-    if not f_email.strip():  errors.append("Email is required.")
-    if "@" not in f_email:   errors.append("Please enter a valid email address.")
-    if not f_phone.strip():  errors.append("WhatsApp number is required.")
-    if not f_broker.strip(): errors.append("Broker name is required.")
+        st.markdown("---")
+        f_ib = st.checkbox(f"Apply {IB_DISCOUNT_PERCENT}% IB Partner Discount (if account opened via our link)", value=False)
+        st.markdown("<br>", unsafe_allow_html=True)
+        submitted = st.form_submit_button("Proceed to Payment ➔", use_container_width=True, type="primary")
 
-    if errors:
-        for err in errors:
-            st.error(f"❌ {err}")
-    elif already_registered(f_email.strip()):
-        st.warning("""
-        ⚠️ This email is already registered. 
-        If you haven't received your license key yet, please contact V.Y. Tech support via WhatsApp.
-        """)
+    if submitted:
+        errors = []
+        if not f_name.strip():   errors.append("Full name is required.")
+        if not f_email.strip():  errors.append("Email is required.")
+        if "@" not in f_email:   errors.append("Valid email is required.")
+        if not f_phone.strip():  errors.append("WhatsApp number is required.")
+
+        if errors:
+            for err in errors: st.error(f"❌ {err}")
+        elif already_registered(f_email.strip()):
+            st.warning("⚠️ This email is already registered. If pending, contact support.")
+        else:
+            base_price = PLANS[f_plan]["price"]
+            final_price = round(base_price * (1 - IB_DISCOUNT_PERCENT / 100), 2) if f_ib else base_price
+            
+            # Save client info as pending
+            clients = load_clients()
+            clients.append({
+                "name": f_name.strip(), "email": f_email.strip().lower(), "phone": f_phone.strip(),
+                "country": f_country.strip(), "broker": f_broker.strip(), "account_id": f_acc_id.strip(),
+                "plan": f_plan, "amount_due": final_price, "experience": f_exp, "ib_partner": f_ib,
+                "status": "pending_payment", "tx_id": "",
+                "submitted_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+            save_clients(clients)
+
+            # Move to Step 2
+            st.session_state.current_client_email = f_email.strip().lower()
+            st.session_state.amount_due = final_price
+            st.session_state.step = 'payment'
+            st.rerun()
+
+# =====================================================================
+# STEP 2: PAYMENT & VERIFICATION
+# =====================================================================
+elif st.session_state.step == 'payment':
+    
+    # Check if plan is Trial (Free)
+    if st.session_state.amount_due == 0:
+        update_client_status(st.session_state.current_client_email, "FREE_TRIAL", status="active")
+        st.markdown(f"""
+        <div style="background:#ecfdf5; border:2px solid #10b981; border-radius:12px; padding:28px; text-align:center; margin-top:20px;">
+            <div style="font-size:36px; margin-bottom:8px;">🎉</div>
+            <h2 style="color:#047857; margin:0;">Trial Activated!</h2>
+            <p style="color:#065f46; margin-top:10px;">Your 7-day free trial request has been successfully submitted.<br>Our team will send your license key via WhatsApp shortly.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Start New Registration"):
+            st.session_state.step = 'registration'
+            st.rerun()
+            
     else:
-        clients = load_clients()
+        st.success("✅ Registration Saved! Please complete your payment below.")
         
-        # Calculate final price
-        base_price = PLANS[f_plan]["price"]
-        final_price = round(base_price * (1 - IB_DISCOUNT_PERCENT / 100), 2) if f_ib else base_price
-
-        clients.append({
-            "name":         f_name.strip(),
-            "email":        f_email.strip().lower(),
-            "phone":        f_phone.strip(),
-            "country":      f_country.strip(),
-            "broker":       f_broker.strip(),
-            "account_id":   f_acc_id.strip(),
-            "plan":         f_plan,
-            "amount_due":   final_price,
-            "experience":   f_exp,
-            "ib_partner":   f_ib,
-            "notes":        f_notes.strip(),
-            "status":       "pending_payment",
-            "submitted_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        })
-        save_clients(clients)
-
-        # Success Message
-        st.success(f"✅ Registration Saved! Hello **{f_name}**, your request for the **{f_plan}** plan is registered.")
-        
-        # Light Green Payment Box HTML
         html_success = f"""
         <div style="background:#f0fdf4; border:2px solid #10b981; border-radius:12px; padding:20px; text-align:center; margin-top:10px; margin-bottom:10px;">
-            <div style="color:#047857; font-size:16px; font-weight:800; margin-bottom:15px;">
-                PLEASE COMPLETE YOUR PAYMENT
-            </div>
+            <div style="color:#047857; font-size:16px; font-weight:800; margin-bottom:15px;">STEP 2: COMPLETE PAYMENT</div>
             <div style="color:#6b7280; font-size:12px; text-transform:uppercase; letter-spacing:1px;">Amount to Send</div>
-            <div style="color:#111827; font-size:32px; font-weight:900; margin:5px 0;">${final_price} USDT</div>
+            <div style="color:#111827; font-size:32px; font-weight:900; margin:5px 0;">${st.session_state.amount_due} USDT</div>
             <div style="color:#6b7280; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin-top:16px;">Network</div>
             <div style="color:#0050bb; font-size:16px; font-weight:700;">Solana (SOL)</div>
-            <div style="color:#6b7280; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin-top:16px;">Wallet Address (Click icon on right to copy) 👇</div>
+            <div style="color:#6b7280; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin-top:16px;">Wallet Address (Copy below) 👇</div>
         </div>
         """
         st.markdown(html_success, unsafe_allow_html=True)
-
-        # In-built code box with automatic copy button
         st.code(WALLET_ADDRESS, language="text")
 
-        st.info("ℹ️ After sending the payment, please share the screenshot/TxID on our WhatsApp support. Your license key will be sent within 24 hours.")
-
-# FEATURES
-st.markdown("""
-<div style="margin-top:32px;">
-    <div style="color:#6b7280; font-size:11px; letter-spacing:3px; text-transform:uppercase; text-align:center; margin-bottom:16px;">
-        What You Get
-    </div>
-    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:10px;">
-        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:14px;">
-            <div style="color:#0050bb; font-size:13px; font-weight:700; margin-bottom:4px;">🧠 RF + LSTM AI Ensemble</div>
-            <div style="color:#4b5563; font-size:12px;">Dual AI model on 10,080 candle history for high-accuracy signals</div>
-        </div>
-        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:14px;">
-            <div style="color:#0050bb; font-size:13px; font-weight:700; margin-bottom:4px;">⚡ Auto + Signal Modes</div>
-            <div style="color:#4b5563; font-size:12px;">Choose between manual signals-only or fully automated trading</div>
-        </div>
-        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:14px;">
-            <div style="color:#0050bb; font-size:13px; font-weight:700; margin-bottom:4px;">🛡️ Smart Risk Management</div>
-            <div style="color:#4b5563; font-size:12px;">Auto SL, Break-Even, Trailing Stop, max trade limits</div>
-        </div>
-        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:14px;">
-            <div style="color:#0050bb; font-size:13px; font-weight:700; margin-bottom:4px;">📅 Economic Calendar</div>
-            <div style="color:#4b5563; font-size:12px;">Live MT5 calendar — NFP, CPI, speeches, no extra API needed</div>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("### 🔐 Verify Transaction")
+        st.markdown("After sending the USDT, paste your **Transaction Hash / Signature** here to instantly verify your payment.")
+        
+        tx_input = st.text_input("Transaction ID (TxID) / Signature", placeholder="e.g. 5Kx2... (Paste hash here)")
+        
+        if st.button("🔄 Verify Payment Automatically", use_container_width=True, type="primary"):
+            if not tx_input.strip():
+                st.error("Please enter a Transaction ID to verify.")
+            else:
+                with st.spinner("⏳ Checking Solana Blockchain for verification... Please wait"):
+                    is_valid, msg = verify_solana_transaction(tx_input, st.session_state.amount_due)
+                    
+                if is_valid:
+                    update_client_status(st.session_state.current_client_email, tx_input, status="paid")
+                    st.markdown(f"""
+                    <div style="background:#ecfdf5; border:2px solid #10b981; border-radius:12px; padding:20px; text-align:center; margin-top:10px;">
+                        <h2 style="color:#047857; margin:0;">🎉 Payment Verified Instantly!</h2>
+                        <p style="color:#065f46; margin-top:10px;">Thank you! Your transaction was successful.<br><b>Status: {msg}</b><br><br>Your license key will be sent to your WhatsApp shortly.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if st.button("Start New Registration"):
+                        st.session_state.step = 'registration'
+                        st.rerun()
+                else:
+                    st.error(f"❌ {msg}")
+                    st.info("If you just made the payment, it might take a few seconds to appear on the network. Try verifying again in 30 seconds.")
 
 # Footer
 st.markdown("""
 <div style="text-align:center; margin-top:36px; padding-top:16px; border-top:1px solid #e5e7eb; font-size:11px; color:#6b7280;">
-    © 2026 <span style="color:#111827; font-weight:700;">V.Y. TECH</span> · All Rights Reserved<br>
-    ⚠️ Trading involves significant risk. AI signals are not financial advice.
+    © 2026 V.Y. TECH · All Rights Reserved
 </div>
 """, unsafe_allow_html=True)
