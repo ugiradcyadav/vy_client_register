@@ -36,7 +36,7 @@ def already_registered(email):
     return any(c.get("email", "").lower() == email.lower() for c in clients)
 
 # ─────────────────────────────────────────────────────────────
-# CSS (Updated for Pure White Theme)
+# CSS (Pure White Theme)
 # ─────────────────────────────────────────────────────────────
 def inject_css():
     st.markdown("""
@@ -225,61 +225,51 @@ if submitted:
         })
         save_clients(clients)
 
-        # Success & Payment Instructions
-        st.markdown(f"""
-        <div style="background:#ecfdf5;border:2px solid #10b981;
-                    border-radius:16px;padding:28px;text-align:center;margin-top:20px;box-shadow: 0 4px 12px rgba(16,185,129,0.1);">
-            <div style="font-size:36px;margin-bottom:8px;">✅</div>
-            <div style="color:#047857;font-size:20px;font-weight:800;margin-bottom:8px;">
-                Registration Saved! Complete Your Payment
+        # Success Message
+        st.success(f"✅ Registration Saved! Hello **{f_name}**, your request for the **{f_plan}** plan is registered.")
+        
+        # Light Green Payment Box HTML
+        html_success = f"""
+        <div style="background:#f0fdf4; border:2px solid #10b981; border-radius:12px; padding:20px; text-align:center; margin-top:10px; margin-bottom:10px;">
+            <div style="color:#047857; font-size:16px; font-weight:800; margin-bottom:15px;">
+                PLEASE COMPLETE YOUR PAYMENT
             </div>
-            <div style="color:#065f46;font-size:14px;line-height:1.6;margin-bottom:20px;">
-                Hello <b>{f_name}</b>, your request for the <b>{f_plan}</b> plan is registered.<br>
-                Please send the exact amount below to activate your license.
-            </div>
-            
-            <div style="background:#ffffff;border:1px dashed #10b981;border-radius:12px;padding:20px;max-width:400px;margin:0 auto;">
-                <div style="color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Amount to Send</div>
-                <div style="color:#111827;font-size:32px;font-weight:900;margin:5px 0;">${final_price} USDT</div>
-                
-                <div style="color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-top:16px;">Network</div>
-                <div style="color:#0050bb;font-size:16px;font-weight:700;">Solana (SOL)</div>
-                
-                <div style="color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-top:16px;">Wallet Address</div>
-                <div style="background:#f3f4f6;padding:10px;border-radius:8px;font-family:monospace;font-size:13px;word-break:break-all;color:#111827;margin-top:5px;">
-                    {WALLET_ADDRESS}
-                </div>
-            </div>
-            
-            <div style="color:#047857;font-size:13px;margin-top:20px;">
-                <i>After sending the payment, please share the screenshot/TxID on our WhatsApp support.<br>
-                Your license key will be sent within <b>24 hours</b> of payment confirmation.</i>
-            </div>
+            <div style="color:#6b7280; font-size:12px; text-transform:uppercase; letter-spacing:1px;">Amount to Send</div>
+            <div style="color:#111827; font-size:32px; font-weight:900; margin:5px 0;">${final_price} USDT</div>
+            <div style="color:#6b7280; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin-top:16px;">Network</div>
+            <div style="color:#0050bb; font-size:16px; font-weight:700;">Solana (SOL)</div>
+            <div style="color:#6b7280; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin-top:16px;">Wallet Address (Click icon on right to copy) 👇</div>
         </div>
-        """, unsafe_allow_html=True)
+        """
+        st.markdown(html_success, unsafe_allow_html=True)
+
+        # In-built code box with automatic copy button
+        st.code(WALLET_ADDRESS, language="text")
+
+        st.info("ℹ️ After sending the payment, please share the screenshot/TxID on our WhatsApp support. Your license key will be sent within 24 hours.")
 
 # FEATURES
 st.markdown("""
 <div style="margin-top:32px;">
-    <div style="color:#6b7280;font-size:11px;letter-spacing:3px;text-transform:uppercase;text-align:center;margin-bottom:16px;">
+    <div style="color:#6b7280; font-size:11px; letter-spacing:3px; text-transform:uppercase; text-align:center; margin-bottom:16px;">
         What You Get
     </div>
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
-        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
-            <div style="color:#0050bb;font-size:13px;font-weight:700;margin-bottom:4px;">🧠 RF + LSTM AI Ensemble</div>
-            <div style="color:#4b5563;font-size:12px;">Dual AI model on 10,080 candle history for high-accuracy signals</div>
+    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:10px;">
+        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:14px;">
+            <div style="color:#0050bb; font-size:13px; font-weight:700; margin-bottom:4px;">🧠 RF + LSTM AI Ensemble</div>
+            <div style="color:#4b5563; font-size:12px;">Dual AI model on 10,080 candle history for high-accuracy signals</div>
         </div>
-        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
-            <div style="color:#0050bb;font-size:13px;font-weight:700;margin-bottom:4px;">⚡ Auto + Signal Modes</div>
-            <div style="color:#4b5563;font-size:12px;">Choose between manual signals-only or fully automated trading</div>
+        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:14px;">
+            <div style="color:#0050bb; font-size:13px; font-weight:700; margin-bottom:4px;">⚡ Auto + Signal Modes</div>
+            <div style="color:#4b5563; font-size:12px;">Choose between manual signals-only or fully automated trading</div>
         </div>
-        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
-            <div style="color:#0050bb;font-size:13px;font-weight:700;margin-bottom:4px;">🛡️ Smart Risk Management</div>
-            <div style="color:#4b5563;font-size:12px;">Auto SL, Break-Even, Trailing Stop, max trade limits</div>
+        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:14px;">
+            <div style="color:#0050bb; font-size:13px; font-weight:700; margin-bottom:4px;">🛡️ Smart Risk Management</div>
+            <div style="color:#4b5563; font-size:12px;">Auto SL, Break-Even, Trailing Stop, max trade limits</div>
         </div>
-        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
-            <div style="color:#0050bb;font-size:13px;font-weight:700;margin-bottom:4px;">📅 Economic Calendar</div>
-            <div style="color:#4b5563;font-size:12px;">Live MT5 calendar — NFP, CPI, speeches, no extra API needed</div>
+        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:14px;">
+            <div style="color:#0050bb; font-size:13px; font-weight:700; margin-bottom:4px;">📅 Economic Calendar</div>
+            <div style="color:#4b5563; font-size:12px;">Live MT5 calendar — NFP, CPI, speeches, no extra API needed</div>
         </div>
     </div>
 </div>
@@ -287,9 +277,8 @@ st.markdown("""
 
 # Footer
 st.markdown("""
-<div style="text-align:center;margin-top:36px;padding-top:16px;border-top:1px solid #e5e7eb;
-            font-size:11px;color:#6b7280;">
-    © 2026 <span style="color:#111827;font-weight:700;">V.Y. TECH</span> · All Rights Reserved<br>
+<div style="text-align:center; margin-top:36px; padding-top:16px; border-top:1px solid #e5e7eb; font-size:11px; color:#6b7280;">
+    © 2026 <span style="color:#111827; font-weight:700;">V.Y. TECH</span> · All Rights Reserved<br>
     ⚠️ Trading involves significant risk. AI signals are not financial advice.
 </div>
 """, unsafe_allow_html=True)
