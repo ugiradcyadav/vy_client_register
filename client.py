@@ -22,7 +22,8 @@ WALLET_ADDRESS = "2tVBtgRjSeWePCniFXnjoKbdzvnmKKBiqciXUTGnTT2r"
 USDT_MINT_ADDRESS = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB" # Official Solana USDT Address
 
 PLANS = {
-    "Trial":     {"price": 0,   "days": 7,   "label": "7-day Free Trial — FREE"},
+    "Trial":      {"price": 0,    "days": 1,   "label": "1-day Free Trial"},
+    "Weekly":      {"price": 10,    "days": 7,   "label": "7-day — $10"},
     "Monthly":   {"price": 49,  "days": 30,  "label": "Monthly — $49/month"},
     "Quarterly": {"price": 129, "days": 90,  "label": "Quarterly — $129 (save 12%)"},
     "Annual":    {"price": 399, "days": 365, "label": "Annual — $399 (save 32%)"},
